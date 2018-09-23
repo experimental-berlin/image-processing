@@ -1,14 +1,31 @@
 package imageprocessing
 
 import (
+	"errors"
 	"image"
 	"math"
+	"net/http"
 
 	"github.com/disintegration/imaging"
 )
 
 // ProcessImage processes an image found at provided URL into also a thumbnail
-func ProcessImage(img image.Image) image.Image {
+func ProcessImage(url string) (image.Image, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, errors.New("Failed to download file")
+	}
+
+	defer resp.Body.Close()
+
+	img, _, err := image.Decode(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
 	targetRatio := 1.5
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
@@ -31,5 +48,5 @@ func ProcessImage(img image.Image) image.Image {
 	}
 	croppedImage := imaging.Crop(img, cropRectangle)
 
-	return imaging.Resize(croppedImage, 800, 534, imaging.Lanczos)
+	return imaging.Resize(croppedImage, 800, 534, imaging.Lanczos), nil
 }

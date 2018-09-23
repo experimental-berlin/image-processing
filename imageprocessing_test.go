@@ -30,7 +30,6 @@ func compareImages(img1, img2 image.Image) bool {
 			r1, g1, b1, a1 := img1.At(x, y).RGBA()
 			r2, g2, b2, a2 := img2.At(x, y).RGBA()
 			if r1 != r2 || g1 != g2 || b1 != b2 || a1 != a2 {
-				fmt.Printf("r: %v != %v, g: %v != %v, b: %v != %v", r1, r2, g1, g2, b1, b2)
 				return false
 			}
 		}
@@ -66,10 +65,14 @@ func TestProcess(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		src := openImage(path.Join("testdata", tc.srcFname))
 		want := openImage(path.Join("testdata", tc.wantFname))
 		t.Run(tc.name, func(t *testing.T) {
-			got := ProcessImage(src)
+			got, err := ProcessImage(fmt.Sprintf("http://test.com/%v", tc.srcFname))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Get thumbnail image from upload mock
 			if !compareImages(got, want) {
 				t.Error("Didn't get expected thumbnail")
 			}
