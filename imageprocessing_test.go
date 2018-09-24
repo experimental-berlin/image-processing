@@ -5,6 +5,8 @@ import (
 	"image"
 	_ "image/png"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"path"
 	"testing"
 
@@ -48,6 +50,12 @@ func openImage(fpath string) image.Image {
 }
 
 func TestProcess(t *testing.T) {
+	fakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fpath := path.Join("testdata", r.URL.Path)
+		http.ServeFile(w, r, fpath)
+	}))
+	defer fakeServer.Close()
+
 	testCases := []struct {
 		name      string
 		srcFname  string
@@ -67,7 +75,7 @@ func TestProcess(t *testing.T) {
 	for _, tc := range testCases {
 		want := openImage(path.Join("testdata", tc.wantFname))
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ProcessImage(fmt.Sprintf("http://test.com/%v", tc.srcFname))
+			got, err := ProcessImage(fmt.Sprintf("%v/%v", fakeServer.URL, tc.srcFname))
 			if err != nil {
 				t.Fatal(err)
 			}
