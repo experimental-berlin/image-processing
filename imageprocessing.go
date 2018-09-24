@@ -1,7 +1,7 @@
 package imageprocessing
 
 import (
-	"errors"
+	"fmt"
 	"image"
 	"math"
 	"net/http"
@@ -9,19 +9,54 @@ import (
 	"github.com/disintegration/imaging"
 )
 
-// ProcessImage processes an image found at provided URL into also a thumbnail
-func ProcessImage(url string) (image.Image, error) {
-	resp, err := http.Get(url)
+func validateResponse(resp *http.Response, url string) error {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("Failed to download %v", url)
+	}
+
+	if resp.ContentLength < 0 {
+		return fmt.Errorf("Couldn't deduce content length from response")
+	}
+
+	sizeMb := float64(resp.ContentLength) / 1024 / 1024
+	maxSizeMb := 3.0
+	if sizeMb > maxSizeMb {
+		return fmt.Errorf("Image is greater than %v MB in size: %v", maxSizeMb, url)
+	}
+
+	return nil
+}
+
+func downloadImage(url string) (image.Image, error) {
+	resp, err := http.Head(url)
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, errors.New("Failed to download file")
+	if err = validateResponse(resp, url); err != nil {
+		return nil, err
 	}
-
 	defer resp.Body.Close()
 
+	resp, err = http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err = validateResponse(resp, url); err != nil {
+		return nil, err
+	}
+
 	img, _, err := image.Decode(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return img, nil
+}
+
+// ProcessImage processes an image found at provided URL into also a thumbnail
+func ProcessImage(url string) (image.Image, error) {
+	img, err := downloadImage(url)
 	if err != nil {
 		return nil, err
 	}
