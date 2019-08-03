@@ -86,16 +86,23 @@ func TestProcess(t *testing.T) {
 			url := fmt.Sprintf("%v/%v", fakeServer.URL, tc.srcFname)
 			got, err := ProcessImage(url)
 			if err != nil {
+				if tc.wantErr == "" {
+					t.Fatalf("Unexpected error: %s", err)
+					return
+				}
+
 				expectedErr := fmt.Sprintf("%v: %v", tc.wantErr, url)
 				if err.Error() != expectedErr {
 					t.Fatalf("Expected error '%v', got '%v'", expectedErr, err)
 				}
-			} else {
-				want := openImage(path.Join("testdata", tc.wantFname))
-				// Get thumbnail image from upload mock
-				if !compareImages(got, want) {
-					t.Error("Didn't get expected thumbnail")
-				}
+
+				return
+			}
+
+			want := openImage(path.Join("testdata", tc.wantFname))
+			// Get thumbnail image from upload mock
+			if !compareImages(got, want) {
+				t.Error("Didn't get expected thumbnail")
 			}
 		})
 	}

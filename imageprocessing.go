@@ -54,7 +54,9 @@ func downloadImage(url string) (image.Image, error) {
 	return img, nil
 }
 
-// ProcessImage processes an image found at provided URL into also a thumbnail
+// ProcessImage processes an image found at provided URL.
+//
+// A thumbnail of the image gets produced.
 func ProcessImage(url string) (image.Image, error) {
 	img, err := downloadImage(url)
 	if err != nil {
@@ -67,6 +69,7 @@ func ProcessImage(url string) (image.Image, error) {
 	sourceRatio := float64(width) / float64(height)
 	var cropRectangle image.Rectangle
 	if sourceRatio < targetRatio {
+		// Crop the image height wise
 		targetHeight := int(float64(width) / targetRatio)
 		offset := int(math.Floor(float64(height-targetHeight) / float64(2)))
 		cropRectangle = image.Rectangle{
@@ -74,6 +77,7 @@ func ProcessImage(url string) (image.Image, error) {
 			Max: image.Point{X: width, Y: height - offset},
 		}
 	} else if sourceRatio > targetRatio {
+		// Crop the image width wise
 		targetWidth := int(targetRatio * float64(height))
 		offset := int(math.Floor(float64(width-targetWidth) / float64(2)))
 		cropRectangle = image.Rectangle{
