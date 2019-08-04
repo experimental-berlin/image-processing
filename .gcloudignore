@@ -1,0 +1,8 @@
+#!include:.gitignore
+
+.gcloudignore
+.git
+.gitignore
+example-client
+testdata/
+*_test.go
