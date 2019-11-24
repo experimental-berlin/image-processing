@@ -164,7 +164,9 @@ func uploadImages(eventID, imageType string, img, thumb image.Image) error {
 	bucket := client.Bucket("arve.experimental.berlin")
 	images := []image.Image{img, thumb}
 	for _, im := range images {
-		obj := bucket.Object(fmt.Sprintf("images/events/%s/main.%s", eventID, imageType))
+		objPath := fmt.Sprintf("images/events/%s/main.%s", eventID, imageType)
+		fmt.Printf("Uploading %q\n", objPath)
+		obj := bucket.Object(objPath)
 		w := obj.NewWriter(ctx)
 		w.ACL = []storage.ACLRule{{Entity: storage.AllUsers, Role: storage.RoleReader}}
 		w.CacheControl = "public, max-age=86400"
