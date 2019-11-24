@@ -3,11 +3,17 @@ package imageprocessing
 import (
 	"context"
 	b64 "encoding/base64"
+	"encoding/json"
 	"fmt"
 	"image"
+	"image/jpeg"
 	"math"
+	"mime"
 	"net/http"
+	"net/url"
+	"strings"
 
+	"cloud.google.com/go/storage"
 	"github.com/disintegration/imaging"
 )
 
@@ -29,31 +35,57 @@ func validateResponse(resp *http.Response, url string) error {
 	return nil
 }
 
-func downloadImage(url string) (image.Image, error) {
-	resp, err := http.Head(url)
+func downloadImage(imgUrl string) (image.Image, string, error) {
+	// http://example.com/image.jpg
+	// 1. Parse URL and extract filename
+	// 2. Extract filename extension (in this case .jpg)
+	// 3. Download to main.jpg
+	u, err := url.Parse(imgUrl)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if err = validateResponse(resp, url); err != nil {
-		return nil, err
+	imageFormat := []string{}
+
+	for i := (len(u.Path) - 1); i > 0; i-- {
+		if u.Path[i] != '.' {
+			imageFormat = append(imageFormat, string(u.Path[i]))
+		} else {
+			break
+		}
+
+	}
+
+	for i, j := 0, len(imageFormat)-1; i < j; i, j = i+1, j-1 {
+		imageFormat[i], imageFormat[j] = imageFormat[j], imageFormat[i]
+	}
+
+	imageType := strings.Join(imageFormat, "")
+	fmt.Printf("this is the image type: %v\n", imageType)
+
+	resp, err := http.Head(imgUrl)
+	if err != nil {
+		return nil, "", err
+	}
+	if err = validateResponse(resp, imgUrl); err != nil {
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
-	resp, err = http.Get(url)
+	resp, err = http.Get(imgUrl)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
-	if err = validateResponse(resp, url); err != nil {
-		return nil, err
+	if err = validateResponse(resp, imgUrl); err != nil {
+		return nil, "", err
 	}
 
 	img, _, err := image.Decode(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return img, nil
+	return img, imageType, nil
 }
 
 // PubSubMessage is the payload of a Pub/Sub event.
@@ -61,14 +93,25 @@ type PubSubMessage struct {
 	Data string `json:"data"`
 }
 
+type processingMessage struct {
+	Url     string
+	EventID string
+}
+
 // ProcessImage processes an image found at provided URL.
 //
 // A thumbnail of the image gets produced.
 func ProcessImage(ctx context.Context, m PubSubMessage) error {
-	urlB, _ := b64.StdEncoding.DecodeString(m.Data)
-	url := string(urlB)
-	fmt.Printf("received request to download %s\n", url)
-	img, err := downloadImage(url)
+	payload, err := b64.StdEncoding.DecodeString(m.Data)
+	if err != nil {
+		return err
+	}
+	var message processingMessage
+	if err := json.Unmarshal(payload, &message); err != nil {
+		return err
+	}
+	fmt.Printf("received request to download %s\n", message.Url)
+	img, imageType, err := downloadImage(message.Url)
 	if err != nil {
 		return err
 	}
@@ -76,7 +119,10 @@ func ProcessImage(ctx context.Context, m PubSubMessage) error {
 	if err != nil {
 		return err
 	}
-	//here the thumb should be uploaded, write the uploader func
+
+	if err := uploadImages(message.EventID, imageType, img, thumb); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -107,4 +153,29 @@ func resizeImage(img image.Image) (*image.NRGBA, error) {
 	croppedImage := imaging.Crop(img, cropRectangle)
 
 	return imaging.Resize(croppedImage, 800, 534, imaging.Lanczos), nil
+}
+
+func uploadImages(eventID, imageType string, img, thumb image.Image) error {
+	ctx := context.Background()
+	client, err := storage.NewClient(ctx)
+	if err != nil {
+		return err
+	}
+	bucket := client.Bucket("arve.experimental.berlin")
+	images := []image.Image{img, thumb}
+	for _, im := range images {
+		obj := bucket.Object(fmt.Sprintf("images/events/%s/main.%s", eventID, imageType))
+		w := obj.NewWriter(ctx)
+		w.ACL = []storage.ACLRule{{Entity: storage.AllUsers, Role: storage.RoleReader}}
+		w.CacheControl = "public, max-age=86400"
+		w.ContentType = mime.TypeByExtension("." + imageType)
+		if err := jpeg.Encode(w, im, &jpeg.Options{Quality: 100}); err != nil {
+			w.Close()
+			return err
+		}
+		if err := w.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
